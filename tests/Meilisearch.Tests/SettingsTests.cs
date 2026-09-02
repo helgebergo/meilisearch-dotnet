@@ -36,6 +36,7 @@ namespace Meilisearch.Tests
                 DistinctAttribute = null,
                 SearchableAttributes = new string[] { "*" },
                 DisplayedAttributes = new string[] { "*" },
+                ForeignKeys = new List<ForeignKey>(),
                 Dictionary = Array.Empty<string>(),
                 StopWords = Array.Empty<string>(),
                 SeparatorTokens = new List<string> { },
@@ -80,6 +81,10 @@ namespace Meilisearch.Tests
 
         public async Task InitializeAsync()
         {
+            // foreignKeys is an experimental feature, disabled by default: without this opt-in the
+            // server omits the setting entirely and every foreignKeys assertion sees null.
+            Assert.True(await _fixture.DefaultClient.EnableForeignKeys());
+
             await _fixture.DeleteAllIndexes(); // Test context cleaned for each [Fact]
             _index = await _fixture.SetUpBasicIndex("BasicIndex-SettingsTests");
         }
@@ -152,6 +157,7 @@ namespace Meilisearch.Tests
                 DisplayedAttributes = new string[] { "name" },
                 RankingRules = new string[] { "typo" },
                 FilterableAttributes = new FilterableAttribute[] { "genre" },
+                ForeignKeys = new[]{ new ForeignKey { ForeignIndexUid = "index_1", FieldName = "index_1_id"}},
                 Dictionary = new string[] { "dictionary" }
             };
             await AssertUpdateSuccess(_index.UpdateSettingsAsync, newSettings);
@@ -259,6 +265,35 @@ namespace Meilisearch.Tests
 
             await AssertResetSuccess(_index.ResetFilterableAttributesAsync);
             await AssertGetEquality(_index.GetFilterableAttributesAsync, _defaultSettings.FilterableAttributes);
+        }
+
+        [Fact]
+        public async Task GetForeignKeys()
+        {
+            await AssertGetEquality(_index.GetForeignKeysAsync, _defaultSettings.ForeignKeys);
+        }
+
+        [Fact]
+        public async Task UpdateForeignKeys()
+        {
+            IEnumerable<ForeignKey> newForeignKeys = new[]
+            {
+                new ForeignKey { ForeignIndexUid = "index_2", FieldName = "index_2_id" },
+                new ForeignKey { ForeignIndexUid = "index_3", FieldName = "index_3_id" }
+            };
+            await AssertUpdateSuccess(_index.UpdateForeignKeysAsync, newForeignKeys);
+            await AssertGetEquality(_index.GetForeignKeysAsync, newForeignKeys);
+        }
+
+        [Fact]
+        public async Task ResetForeignKeys()
+        {
+            IEnumerable<ForeignKey> newForeignKeys = new[] { new ForeignKey { ForeignIndexUid = "index_4", FieldName = "index_4_id" } };
+            await AssertUpdateSuccess(_index.UpdateForeignKeysAsync, newForeignKeys);
+            await AssertGetEquality(_index.GetForeignKeysAsync, newForeignKeys);
+
+            await AssertResetSuccess(_index.ResetForeignKeysAsync);
+            await AssertGetEquality(_index.GetForeignKeysAsync, _defaultSettings.ForeignKeys);
         }
 
         [Fact]
@@ -777,6 +812,7 @@ namespace Meilisearch.Tests
                 DistinctAttribute = inputSettings.DistinctAttribute ?? defaultSettings.DistinctAttribute,
                 SearchableAttributes = inputSettings.SearchableAttributes ?? defaultSettings.SearchableAttributes,
                 DisplayedAttributes = inputSettings.DisplayedAttributes ?? defaultSettings.DisplayedAttributes,
+                ForeignKeys = inputSettings.ForeignKeys ?? defaultSettings.ForeignKeys,
                 StopWords = inputSettings.StopWords ?? defaultSettings.StopWords,
                 SeparatorTokens = inputSettings.SeparatorTokens ?? defaultSettings.SeparatorTokens,
                 NonSeparatorTokens = inputSettings.NonSeparatorTokens ?? defaultSettings.NonSeparatorTokens,
