@@ -157,7 +157,7 @@ namespace Meilisearch.Tests
                 DisplayedAttributes = new string[] { "name" },
                 RankingRules = new string[] { "typo" },
                 FilterableAttributes = new FilterableAttribute[] { "genre" },
-                ForeignKeys = new[]{ new ForeignKey { ForeignIndexUid = "index_1", FieldName = "index_1_id"}},
+                ForeignKeys = new[] { new ForeignKey { ForeignIndexUid = "index_1", FieldName = "index_1_id" } },
                 Dictionary = new string[] { "dictionary" }
             };
             await AssertUpdateSuccess(_index.UpdateSettingsAsync, newSettings);
