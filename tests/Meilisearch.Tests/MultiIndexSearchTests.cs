@@ -140,5 +140,53 @@ namespace Meilisearch.Tests
 
             result.Hits.Should().HaveCount(2);
         }
+
+        [Fact]
+        public async Task FederatedSearchWithRankingScoreThreshold()
+        {
+            // "Iron Spider" matches "Iron Man" loosely, "Star Wars Harry" matches "Star Wars" well.
+            var query = new FederatedMultiSearchQuery
+            {
+                Queries = new List<FederatedSearchQuery>()
+                {
+                    new FederatedSearchQuery { IndexUid = _index1.Uid, Q = "Iron Spider" },
+                    new FederatedSearchQuery { IndexUid = _index2.Uid, Q = "Star Wars Harry" }
+                }
+            };
+
+            var unfiltered = await _fixture.DefaultClient.FederatedMultiSearchAsync<Movie>(query);
+            unfiltered.Hits.Should().HaveCount(2);
+
+            // The threshold is per query: only the loose match is dropped.
+            query.Queries[0].RankingScoreThreshold = 0.5M;
+
+            var filtered = await _fixture.DefaultClient.FederatedMultiSearchAsync<Movie>(query);
+            filtered.Hits.Should().ContainSingle().Which.Name.Should().Be("Star Wars");
+        }
+
+        [Fact]
+        public async Task FederatedSearchWithDistinct()
+        {
+            var query = new FederatedMultiSearchQuery
+            {
+                Queries = new List<FederatedSearchQuery>
+                {
+                    new FederatedSearchQuery { IndexUid = _index1.Uid, Q = "", Filter = "genre = 'SF'" },
+                    new FederatedSearchQuery { IndexUid = _index2.Uid, Q = "", Filter = "genre = 'SF'" }
+                }
+            };
+
+            var unfiltered = await _fixture.DefaultClient.FederatedMultiSearchAsync<Movie>(query);
+            unfiltered.Hits.Should().HaveCount(4);
+
+            foreach (var federatedQuery in query.Queries)
+            {
+                federatedQuery.Distinct = "genre";
+            }
+
+            // One hit per distinct genre value, per query.
+            var distinct = await _fixture.DefaultClient.FederatedMultiSearchAsync<Movie>(query);
+            distinct.Hits.Should().HaveCount(2);
+        }
     }
 }
