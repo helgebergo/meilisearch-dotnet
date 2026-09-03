@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 
 using Meilisearch.Tests.Fixtures;
+using Meilisearch.Tests.Models;
 
 using Xunit;
 
@@ -187,6 +188,77 @@ namespace Meilisearch.Tests
             // One hit per distinct genre value, per query.
             var distinct = await _fixture.DefaultClient.FederatedMultiSearchAsync<Movie>(query);
             distinct.Hits.Should().HaveCount(2);
+        }
+
+        [Fact]
+        public async Task FederatedSearchWithPerQueryFederationOptions()
+        {
+            // Both queries match the same two movies; the weights decide which index wins the merge.
+            var query = new FederatedMultiSearchQuery
+            {
+                Queries = new List<FederatedSearchQuery>
+                {
+                    new FederatedSearchQuery
+                    {
+                        IndexUid = _index1.Uid,
+                        Q = "Star Wars",
+                        FederationOptions = new FederatedSearchQueryOptions { Weight = 0.1M }
+                    },
+                    new FederatedSearchQuery
+                    {
+                        IndexUid = _index2.Uid,
+                        Q = "Star Wars",
+                        FederationOptions = new FederatedSearchQueryOptions { Weight = 1.0M }
+                    }
+                },
+                FederationOptions = new MultiSearchFederationOptions { Limit = 1 }
+            };
+
+            var result = await _fixture.DefaultClient.FederatedMultiSearchAsync<FederatedMovie>(query);
+
+            // Identical matches in both indexes, so the heavier query's hit is the one kept.
+            var hit = result.Hits.Should().ContainSingle().Subject;
+            hit.Name.Should().Be("Star Wars");
+            hit.Federation.IndexUid.Should().Be(_index2.Uid);
+            hit.Federation.WeightedRankingScore.Should().BeApproximately(1.0, 1e-6);
+        }
+
+        [Fact]
+        public async Task FederatedSearchWithHybridAndVector()
+        {
+            var vectorIndex1 = await _fixture.SetUpIndexForVectorSearch("VectorIndex-MultiSearch-Index1");
+            var vectorIndex2 = await _fixture.SetUpIndexForVectorSearch("VectorIndex-MultiSearch-Index2");
+
+            FederatedSearchQuery VectorQuery(string indexUid) => new FederatedSearchQuery
+            {
+                IndexUid = indexUid,
+                Q = string.Empty,
+                Hybrid = new HybridSearch { Embedder = "manual", SemanticRatio = 1.0f },
+                Vector = new[] { 0.1, 0.6, 0.8 },
+                RetrieveVectors = true
+            };
+
+            var query = new FederatedMultiSearchQuery
+            {
+                Queries = new List<FederatedSearchQuery>
+                {
+                    VectorQuery(vectorIndex1.Uid),
+                    VectorQuery(vectorIndex2.Uid)
+                },
+                FederationOptions = new MultiSearchFederationOptions { Limit = 2 }
+            };
+
+            var result = await _fixture.DefaultClient.FederatedMultiSearchAsync<VectorMovieWithEmbeddings>(query);
+
+            // The vector queried for is "Escape Room"'s own, so it ranks first in both indexes.
+            result.Hits.Should().HaveCount(2);
+            result.Hits.Should().OnlyContain(movie => movie.Title == "Escape Room");
+            // Meilisearch stores embeddings as f32, so the values come back slightly rounded.
+            result.Hits.First().Vectors["manual"].Embeddings.Should()
+                .ContainSingle().Which.Should().BeEquivalentTo(
+                    new[] { 0.1, 0.6, 0.8 },
+                    options => options.Using<double>(
+                        ctx => ctx.Subject.Should().BeApproximately(ctx.Expectation, 1e-6)).WhenTypeIs<double>());
         }
     }
 }

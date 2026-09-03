@@ -14,10 +14,10 @@ namespace Meilisearch
     public class FederatedSearchQuery : SearchQueryBase
     {
         /// <summary>
-        /// Federated search options
+        /// Per-query federated search options: weight, remote and query position.
         /// </summary>
         [JsonPropertyName("federationOptions")]
-        public MultiSearchFederationOptions FederationOptions { get; set; }
+        public FederatedSearchQueryOptions FederationOptions { get; set; }
 
         /// <summary>
         /// Sets distinct attribute at search time.
